@@ -15,9 +15,10 @@ var DirectionFacing = {
     Angle135 : 3
 };
 
-var OBJ_BLOCK_WIDTH = 64.0;
-var OBJ_BLOCK_SIZE = new cc.size(OBJ_BLOCK_WIDTH, OBJ_BLOCK_WIDTH);
-var OBJ_BLOCK_RECT = new cc.rect(0, 0, OBJ_BLOCK_WIDTH, OBJ_BLOCK_WIDTH);
+let OBJ_BLOCK_WIDTH = 64.0;
+let OBJ_BLOCK_SIZE = cc.size(OBJ_BLOCK_WIDTH, OBJ_BLOCK_WIDTH);
+let OBJ_BLOCK_RECT = cc.rect(0, 0, OBJ_BLOCK_WIDTH, OBJ_BLOCK_WIDTH);
+let M_PI = Math.PI;
 
 window.onload = function(){
     cc.game.onStart = function(){
@@ -43,7 +44,7 @@ var GameLayer = cc.LayerColor.extend({
         this._super(cc.color(0, 40, 45, 255));
         // var size = cc.director.getWinSize();
 
-        // var sprite = cc.Sprite.create("Textures/Pointer.png");
+        // var sprite = cc.Sprite.create("Textures/ointer.png");
         // sprite.setPosition(size.width / 2, size.height / 2);
         // // sprite.setScale(1);
         // this.addChild(sprite, 0);
@@ -54,9 +55,6 @@ var GameLayer = cc.LayerColor.extend({
         // this.addChild(label, 1);
         this.loadObjectsFromFile();
         this.scheduleUpdate();
-    },
-    update:function(dt) {
-        // console.log('logggg');
     },
     loadObjectsFromFile:function() {
         var myLayer = this;
@@ -106,17 +104,40 @@ var GameLayer = cc.LayerColor.extend({
                 }
             }
         };
-    }
+    },
+    update:function(dt) {
+        // console.log('logggg');
+        var children = this.getChildren();
+        var testObjs = new Array();
+        var particles = new Array();
+        for (let index in children) {
+            var child = children[index];
+            if (child.isMemberOfClass("BaseSprite")) {
+                child.run();
+                testObjs.push(child);
+            } else if (child.isMemberOfClass("LazerParticle")) {
+                particles.push(child);
+            }
+        }
+        for (let pIndex in particles) {
+            var parti = particles[pIndex];
+            parti.testWithObjects(testObjs);
+        }
+    },
 });
 
 
 // base sprite
 var BaseSprite = cc.Sprite.extend({
-    ctor:function(fileName) {
+    _className:"BaseSprite",
+    ctor:function(fileName, rect) {
         if (fileName == undefined) {
             fileName = "Textures/Empty.png";
+        } 
+        if (rect == undefined) {
+            rect = cc.rect(OBJ_BLOCK_RECT);
         }
-        this._super(fileName, new cc.rect(OBJ_BLOCK_RECT));
+        this._super(fileName, rect);
         // this.setScale(0.5);
         // this.setRectInPixel:()
     },
@@ -126,43 +147,28 @@ var BaseSprite = cc.Sprite.extend({
     crash:function() {
 
     },
-    getContentSize() {
+    getSize:function() {
         return cc.size(OBJ_BLOCK_SIZE);
+    },
+    getRect:function() {
+        let size = this.getSize();
+        let center = this.getPosition();
+        return cc.rect(center.x - size.width / 2, center.y - size.height / 2, size.width, size.height);
     },
     // 用弧度，逆时针，符合小学数学
     setRotation:function(rotation) {
-        this._super(-rotation * 180.0 / Math.PI);
+        this._super(-rotation * 180.0 / M_PI);
     },
     getRotation:function() {
         var angle = this._super();
-        return -angle * Math.PI / 180.0;
-    }
-    // addChild:function(child) {
-
-    // }
-});
-
-var LazerSource = BaseSprite.extend({
-    disabled:0,
-    ctor:function(facing, disabled) {
-        this._super("Textures/LazerSource.png");
-        this.disabled = disabled;
-        var rotation = 0;
-        if (facing == DirectionFacing.Up) {
-            rotation = Math.PI / 2;
-        } else if (facing == DirectionFacing.Left) {
-            rotation = Math.PI;
-        } else if (facing == DirectionFacing.Down) {
-            rotation = -Math.PI / 2;
-        }
-        this.setRotation(rotation);
-
-        if (!disabled) {
-            var shooterSpr = new BaseSprite("Textures/LazerSourceShooter.png");
-            shooterSpr.setPosition(this.getContentSize().width, this.getContentSize().height / 2);
-            this.addChild(shooterSpr);
-        }
-    }
+        return -angle * M_PI / 180.0;
+    },
+    getClassName:function() {
+        return this._className;
+    },
+    isMemberOfClass:function(className) {
+        return (this.getClassName() == className);
+    },
 });
 
 var BlockType = {
@@ -184,7 +190,7 @@ var NormalBlock = BaseSprite.extend({
             facing = DirectionFacing.Right;
         }
         if (facing == DirectionFacing.Up) {
-            this.setRotation(Math.PI / 2);
+            this.setRotation(M_PI / 2);
         }
         this.myType = type;
         this.myFacing = facing;
@@ -205,16 +211,16 @@ var NormalReflector = BaseReflector.extend({
         this._super("Textures/NormalReflector.png");
         var rota = 0;
         if (facing == DirectionFacing.QuadrantTwo) {
-            rota = Math.PI / 2;
+            rota = M_PI / 2;
         } else if (facing == DirectionFacing.QuadrantThree) {
-            rota = Math.PI;
+            rota = M_PI;
         } else if (facing == DirectionFacing.QuadrantFour) {
-            rota = -Math.PI / 2;
+            rota = -M_PI / 2;
         }
         this.setRotation(rota);
     },
     getRealZRotation:function() {
-        return self.getRotation() - (Math.PI / 4);
+        return self.getRotation() - (M_PI / 4);
     }
 });
 
@@ -223,11 +229,11 @@ var ManualReflector = BaseReflector.extend({
         this._super("Textures/ManualReflector.png");
         var rota = 0;
         if (facing == DirectionFacing.Angle90) {
-            rota = Math.PI / 2;
+            rota = M_PI / 2;
         } else if (facing == DirectionFacing.Angle135) {
-            rota = (Math.PI / 2) + (Math.PI / 4);
+            rota = (M_PI / 2) + (M_PI / 4);
         } else if (facing == DirectionFacing.Angle45) {
-            rota = Math.PI / 4;
+            rota = M_PI / 4;
         }
         this.setRotation(rota);
     }
@@ -237,15 +243,15 @@ var AutoReflector = BaseReflector.extend({
     backgroundSpr:null,
     shooterSpr:null,
     ctor:function() {
-        this._super();
+        this._super("Textures/AutoReflectorShooter.png");
         this.backgroundSpr = new BaseSprite("Textures/AutoReflector.png");
-        this.addChild(this.backgroundSpr);
-        this.backgroundSpr.setPosition(this.getContentSize().width /2, this.getContentSize().height / 2);
-        this.shooterSpr = new BaseSprite("Textures/AutoReflectorShooter.png");
-        this.addChild(this.shooterSpr, 1);
-        this.shooterSpr.setPosition(this.getContentSize().width / 2, this.getContentSize().height / 2);
+        this.addChild(this.backgroundSpr, -1);
+        this.backgroundSpr.setPosition(this.getSize().width /2, this.getSize().height / 2);
+        // this.shooterSpr = new BaseSprite("Textures/AutoReflectorShooter.png");
+        // this.addChild(this.shooterSpr, 1);
+        // this.shooterSpr.setPosition(this.getSize().width / 2, this.getSize().height / 2);
         this.schedule(function() {
-            this.setRotation(this.getRotation() + (Math.PI / 4));
+            this.setRotation(this.getRotation() + (M_PI / 4));
         }, 0.8);
     },
     setRotation:function(rotation) {
@@ -268,4 +274,78 @@ var FirePacket = BasePacket.extend({
     ctor:function() {
         this._super("Textures/FirePacket.png");
     }
+});
+
+// lazers
+var LazerSource = BaseSprite.extend({
+    disabled:0,
+    ctor:function(facing, disabled) {
+        this._super("Textures/LazerSource.png");
+        this.disabled = disabled;
+        var rotation = 0;
+        if (facing == DirectionFacing.Up) {
+            rotation = M_PI / 2;
+        } else if (facing == DirectionFacing.Left) {
+            rotation = M_PI;
+        } else if (facing == DirectionFacing.Down) {
+            rotation = -M_PI / 2;
+        }
+        this.setRotation(rotation);
+
+        if (!disabled) {
+            var shooterSpr = new BaseSprite("Textures/LazerSourceShooter.png");
+            shooterSpr.setPosition(this.getSize().width, this.getSize().height / 2);
+            this.addChild(shooterSpr);
+        }
+    },
+    run:function() {
+        // shoot a LazerParticle
+        if (this.disabled == 0) {
+            var particle = new LazerParticle(this.getRotation());
+            var originPo = this.getPosition();
+            var newPosi = pointOffset(originPo, this.getSize().width / 2 + 10, 0);
+            var rotatedPosi = pointRotatePoint(newPosi, originPo, this.getRotation());
+            particle.setPosition(rotatedPosi);
+            this.getParent().addChild(particle, 100);
+        }
+    }
+});
+
+var LazerParticle = cc.Node.extend({
+    _className:"LazerParticle",
+    _drawed:false,
+    _realZRotation:0,
+    ctor:function(zRotation) {
+        this._super();
+        this._realZRotation = zRotation;
+    },
+    getClassName:function() {
+        return this._className;
+    },
+    isMemberOfClass:function(className) {
+        return (this.getClassName() == className);
+    },
+    testWithObjects:function(objects) { 
+        if (this._drawed) {
+            this.removeFromParent();
+            // console.log("remove:" + this);
+            return;
+        }
+        this._drawed = true;
+        // console.log("test:" + this);
+        // do logic
+
+        var pointer = new BaseSprite("Textures/LazerParticle.png");
+        pointer.setRotation(this._realZRotation);
+        pointer.setPosition(pointRotateVector(cc.p(OBJ_BLOCK_WIDTH / 2, 0), this._realZRotation));
+        pointer.setScaleX(1);
+        pointer.setScaleY(0.4);
+        this.addChild(pointer);
+
+        var pointer2 = new BaseSprite("Textures/LazerSpark.png");
+        pointer2.setRotation(this._realZRotation + cc.randomMinus1To1() * M_PI * 0.1);
+        pointer2.setPosition(pointRotateVector(cc.p(64, 0), this._realZRotation));
+        pointer2.setScaleY(cc.randomMinus1To1() > 0 ? 1 : -1);
+        this.addChild(pointer2);
+    },
 });
