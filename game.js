@@ -15,12 +15,10 @@ var DirectionFacing = {
     Angle135 : 3
 };
 
-let OBJ_BLOCK_WIDTH = 64.0;
-let OBJ_BLOCK_SIZE = cc.size(OBJ_BLOCK_WIDTH, OBJ_BLOCK_WIDTH);
-let OBJ_BLOCK_RECT = cc.rect(0, 0, OBJ_BLOCK_WIDTH, OBJ_BLOCK_WIDTH);
-let M_PI = Math.PI;
-
 window.onload = function(){
+
+
+
     cc.game.onStart = function(){
         //load resources
         cc.LoaderScene.preload([], function () {
@@ -112,10 +110,10 @@ var GameLayer = cc.LayerColor.extend({
         var particles = new Array();
         for (let index in children) {
             var child = children[index];
-            if (child.isMemberOfClass("BaseSprite")) {
+            if (child.isClass("BaseSprite")) {
                 child.run();
                 testObjs.push(child);
-            } else if (child.isMemberOfClass("LazerParticle")) {
+            } else if (child.isClass("LazerParticle")) {
                 particles.push(child);
             }
         }
@@ -130,6 +128,7 @@ var GameLayer = cc.LayerColor.extend({
 // base sprite
 var BaseSprite = cc.Sprite.extend({
     _className:"BaseSprite",
+    _typeName:"NormalType",
     ctor:function(fileName, rect) {
         if (fileName == undefined) {
             fileName = "Textures/Empty.png";
@@ -166,9 +165,15 @@ var BaseSprite = cc.Sprite.extend({
     getClassName:function() {
         return this._className;
     },
-    isMemberOfClass:function(className) {
+    isClass:function(className) {
         return (this.getClassName() == className);
     },
+    getTypeName:function() {
+        return this._typeName;
+    },
+    isType:function(typeName) {
+        return (this.getTypeName() == typeName);
+    }
 });
 
 var BlockType = {
@@ -201,12 +206,30 @@ var NormalBlock = BaseSprite.extend({
 });
 
 var BaseReflector = BaseSprite.extend({
+    _typeName:"ReflectorType",
+    _reflectorType:"BaseReflector",
     getRealZRotation:function() {
         return this.getRotation();
-    }
+    },
+    getReflectorType:function() {
+        return this._reflectorType;
+    },
+    getNewLineWithOldLine:function(oldLine) {
+        return oldLine;
+        var selfRealRotation = this.getRealZRotation();
+        var selfLine = zz.line(this.getPosition().x, this.getPosition().y, selfRealRotation);
+        var intersectionPoint = zz.pointIntersectionFromLines(oldLine, selfLine);
+        if (!cc.rectContainsPoint(this.getRect(), intersectionPoint)) {
+            return oldLine;
+        }
+
+        var reflectedZRotation = (selfRealRotation - oldLine.alpha) + selfRealRotation;
+        return zz.line(intersectionPoint.x, intersectionPoint.y, reflectedZRotation);
+    },
 });
 
 var NormalReflector = BaseReflector.extend({
+    _reflectorType:"NormalReflector",
     ctor:function(facing) {
         this._super("Textures/NormalReflector.png");
         var rota = 0;
@@ -221,10 +244,13 @@ var NormalReflector = BaseReflector.extend({
     },
     getRealZRotation:function() {
         return self.getRotation() - (M_PI / 4);
-    }
+    },
+    // isPointInDarkSide
+
 });
 
 var ManualReflector = BaseReflector.extend({
+    _reflectorType:"ManualReflector",
     ctor:function(facing) {
         this._super("Textures/ManualReflector.png");
         var rota = 0;
@@ -242,6 +268,7 @@ var ManualReflector = BaseReflector.extend({
 var AutoReflector = BaseReflector.extend({
     backgroundSpr:null,
     shooterSpr:null,
+    _reflectorType:"AutoReflector",
     ctor:function() {
         this._super("Textures/AutoReflectorShooter.png");
         this.backgroundSpr = new BaseSprite("Textures/AutoReflector.png");
@@ -303,8 +330,8 @@ var LazerSource = BaseSprite.extend({
         if (this.disabled == 0) {
             var particle = new LazerParticle(this.getRotation());
             var originPo = this.getPosition();
-            var newPosi = pointOffset(originPo, this.getSize().width / 2 + 10, 0);
-            var rotatedPosi = pointRotatePoint(newPosi, originPo, this.getRotation());
+            var newPosi = zz.pointOffset(originPo, this.getSize().width / 2 + 10, 0);
+            var rotatedPosi = zz.pointRotatePoint(newPosi, originPo, this.getRotation());
             particle.setPosition(rotatedPosi);
             this.getParent().addChild(particle, 100);
         }
@@ -322,7 +349,7 @@ var LazerParticle = cc.Node.extend({
     getClassName:function() {
         return this._className;
     },
-    isMemberOfClass:function(className) {
+    isClass:function(className) {
         return (this.getClassName() == className);
     },
     testWithObjects:function(objects) { 
@@ -335,16 +362,106 @@ var LazerParticle = cc.Node.extend({
         // console.log("test:" + this);
         // do logic
 
+        var parentSize = cc.director.getWinSize();
+        var parentRect = cc.rect(0, 0, parentSize.width, parentSize.height);
+
+        var lastLine = zz.line(this.getPosition().x, this.getPosition().y, this._realZRotation);
+        var lastHitSpr = null;
+
+        var ended = false;
+        var testTime = 0;
+        while(!ended) {
+            testTime ++;
+            if (testTime > 100) {
+                ended = true;
+                break;
+            }
+            var testMinDistance = 100000;
+            var thisHitPoint = zz.pointNotFound();
+            var thisHitSpr = null;
+            var reflectedLine = zz.line(0, 0, 0);
+            var isReflected = false;
+            for (let index in objects) {
+                var tSpr = objects[index];
+                if (tSpr === lastHitSpr) {
+                    continue;
+                }
+                var testRect = tSpr.getRect();
+                var testHitPoint = zz.pointIntersectionFromRectToLine(testRect, lastLine);
+                var testWillBeReflected = false;
+                var testReflectedLine = zz.line(0, 0, 0);
+                if (!cc.pointEqualToPoint(testHitPoint, zz.pointNotFound())) {
+                    if (tSpr.isType("ReflectorType")) {
+                        // baljblaklkf
+                        testWillBeReflected = true;
+                        var willNotHitNotReflectingFace = false; // check false face
+                        if (willNotHitNotReflectingFace) {
+                            testWillBeReflected = false;
+                        } else {
+                            testReflectedLine = tSpr.getNewLineWithOldLine(lastLine);
+                            if (zz.lineEqualToLine(testReflectedLine, lastLine)) {
+                                continue;
+                            }
+                            if (tSpr.getReflectorType() == "AutoReflector") {
+
+                            } else {
+                                testHitPoint = cc.p(testReflectedLine.x, testReflectedLine.y);
+                            }
+                        }
+                    } 
+                    var thisDistance = zz.distanceFromPoints(cc.p(lastLine.x, lastLine.y), testHitPoint);
+                    if (thisDistance < testMinDistance) { // 取最近的一个作为这一轮的结果
+                        testMinDistance = thisDistance;
+                        thisHitPoint = testHitPoint;
+                        thisHitSpr = tSpr;
+                        reflectedLine = testReflectedLine;
+                        isReflected = testWillBeReflected;
+                    }
+                }
+            }
+            if (thisHitSpr == null) {
+                thisHitPoint = zz.pointIntersectionFromRectToLine(parentRect, lastLine);
+            }
+            this.drawLazerFromPoint(cc.p(lastLine.x, lastLine.y), thisHitPoint);
+            lastHitSpr = thisHitSpr;
+            if (isReflected) {
+                lastLine = reflectedLine;
+            } else {
+                 // if packet
+                 ended = true;
+                 this.drawSparkAtPoint(thisHitPoint, lastLine);
+                 // turn red if need
+            }
+        }
+    },
+    drawLazerFromPoint:function(fromPoint, toPoint) {
+        var fp = zz.pointOffset(fromPoint, -this.getPosition().x, -this.getPosition().y);
+        var tp = zz.pointOffset(toPoint, -this.getPosition().x, -this.getPosition().y);
+        var center = zz.centerFromPoints(fp, tp);
+        var distance = zz.distanceFromPoints(fp, tp);
+        var zRotation = atan2(fp.y - tp.y, fp.x - tp.x);
+
+        var lazer = new BaseSprite("Textures/LazerParticle.png");
+        lazer.setRotation(zRotation);
+        lazer.setPosition(center);
+        lazer.setScaleX(distance / OBJ_BLOCK_WIDTH);
+        lazer.setScaleY(0.4);
+        this.addChild(lazer);
+    },
+    drawSparkAtPoint:function(atPoint, fromLine) {
+
+    },
+    test:function() {
         var pointer = new BaseSprite("Textures/LazerParticle.png");
         pointer.setRotation(this._realZRotation);
-        pointer.setPosition(pointRotateVector(cc.p(OBJ_BLOCK_WIDTH / 2, 0), this._realZRotation));
+        pointer.setPosition(zz.pointRotateVector(cc.p(OBJ_BLOCK_WIDTH / 2, 0), this._realZRotation));
         pointer.setScaleX(1);
         pointer.setScaleY(0.4);
         this.addChild(pointer);
 
         var pointer2 = new BaseSprite("Textures/LazerSpark.png");
         pointer2.setRotation(this._realZRotation + cc.randomMinus1To1() * M_PI * 0.1);
-        pointer2.setPosition(pointRotateVector(cc.p(64, 0), this._realZRotation));
+        pointer2.setPosition(zz.pointRotateVector(cc.p(64, 0), this._realZRotation));
         pointer2.setScaleY(cc.randomMinus1To1() > 0 ? 1 : -1);
         this.addChild(pointer2);
     },
