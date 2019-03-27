@@ -15,10 +15,20 @@ var DirectionFacing = {
     Angle135 : 3
 };
 
+var currentGameLayer = null;
+var currentDiedTime = 0;
+var totalDataPacketCount = 0;
+
+window.onkeydown=function(){
+    // if(13 == event.keyCode){
+        // console.log('browser is not ie and enter key down' + event.keyCode);
+    // }
+    if (currentGameLayer) {
+        currentGameLayer.actionWithKeyEvent(event);
+    }
+}
+
 window.onload = function(){
-
-
-
     cc.game.onStart = function(){
         //load resources
         cc.LoaderScene.preload([], function () {
@@ -26,6 +36,7 @@ window.onload = function(){
                 onEnter:function () {
                     this._super();
                     var gl = new GameLayer();
+                    currentGameLayer = gl;
                     this.addChild(gl, 1);
                     // this.sheduleUpdate(gl);
                 }
@@ -38,6 +49,48 @@ window.onload = function(){
 };
 
 var GameLayer = cc.LayerColor.extend({
+    _currentManualReflector:null,
+    _currentReflectorIndicator:null,
+    onEnter:function() {
+        this._super();
+        var myLayer = this;
+        var listener = cc.EventListener.create({
+            event:cc.EventListener.TOUCH_ONE_BY_ONE,
+            onTouchBegan:myLayer.onTouchBegan,
+        });
+        cc.eventManager.addListener(listener, myLayer);
+    },
+    onTouchBegan:function(touch, event) {
+        var myLayer = event.getCurrentTarget();
+        var point = touch.getLocation();
+        var children = myLayer.getChildren();
+        var testObjs = new Array();
+        var particles = new Array();
+        for (let index in children) {
+            var child = children[index];
+            if (child.isClass("BaseSprite") && child.isType("ReflectorType")) {
+                if (child._reflectorType == "ManualReflector") {
+                    var rect = child.getRect();
+                    if (cc.rectContainsPoint(rect, point)) {
+                        myLayer.setCurrentManualReflector(child);
+                        break;
+                    }
+                }
+            }
+        }
+    },
+    actionWithKeyEvent:function(keyEvent) {
+        var isA = keyEvent.keyCode == 65;
+        var isD = keyEvent.keyCode == 68;
+        var rota = this._currentManualReflector.getRotation();
+        if (isA) {
+            rota += M_PI / 48;
+        } else if (isD) {
+            rota -= M_PI / 48;
+        }
+        this._currentManualReflector.setRotation(rota);
+        // this._currentManualReflector.runAction()
+    },
     ctor:function() {
         this._super(cc.color(0, 40, 45, 255));
         // var size = cc.director.getWinSize();
@@ -54,10 +107,21 @@ var GameLayer = cc.LayerColor.extend({
         this.loadObjectsFromFile();
         this.scheduleUpdate();
     },
+    setCurrentManualReflector:function(reflector) {
+        this._currentManualReflector = reflector;
+        if (this._currentReflectorIndicator == null) {
+            this._currentReflectorIndicator = new BaseSprite("Textures/Empty.png");
+            this._currentReflectorIndicator._className = "";
+            this.addChild(this._currentReflectorIndicator);
+        }
+        this._currentReflectorIndicator.setPosition(this._currentManualReflector.getPosition());
+    },
     loadObjectsFromFile:function() {
         var myLayer = this;
+        var randomValue = Math.floor(Math.random() * 13 + 1);
+        var missionFile = "Configs/mission" + randomValue +".json";
         var req = new XMLHttpRequest();
-        req.open("GET", "Configs/mission10.json", true);
+        req.open("GET", missionFile, true);
         req.send(null);
         req.onreadystatechange = function(){
             if(req.readyState == 4 && req.status == 200){
@@ -90,6 +154,7 @@ var GameLayer = cc.LayerColor.extend({
                         spr = new AutoReflector();
                     } else if (name == "DataPacket") {
                         spr = new DataPacket();
+                        totalDataPacketCount ++;
                     } else if (name == "FirePacket") {
                         spr = new FirePacket();
                     }
@@ -98,29 +163,47 @@ var GameLayer = cc.LayerColor.extend({
                         console.log("loaded:" + name);  
                         spr.setPosition(realX, realY);
                         myLayer.addChild(spr);
+                        if (myLayer._currentManualReflector == null && name == "ManualReflector") {
+                            myLayer.setCurrentManualReflector(spr);
+                        }
                     }
                 }
             }
         };
     },
     update:function(dt) {
+        // check game over
+        var gameover = currentDiedTime > 2;
+        if (gameover) {
+            location.reload();
+            return;
+        }
+
         // console.log('logggg');
         var children = this.getChildren();
         var testObjs = new Array();
         var particles = new Array();
+        var leftDataPacketCount = 0;
         for (let index in children) {
             var child = children[index];
             if (child.isClass("BaseSprite")) {
                 child.run();
                 testObjs.push(child);
+                if (child.isType("DataPacket")) {
+                    leftDataPacketCount ++;
+                }
             } else if (child.isClass("LazerParticle")) {
                 particles.push(child);
             }
         }
+        if (totalDataPacketCount > 0 && leftDataPacketCount <= 0) {
+            location.reload();
+            return;
+        }
         for (let pIndex in particles) {
             var parti = particles[pIndex];
             parti.testWithObjects(testObjs);
-        }
+        }    
     },
 });
 
@@ -144,6 +227,9 @@ var BaseSprite = cc.Sprite.extend({
 
     },
     crash:function() {
+
+    },
+    getHurt:function() {
 
     },
     getSize:function() {
@@ -215,17 +301,20 @@ var BaseReflector = BaseSprite.extend({
         return this._reflectorType;
     },
     getNewLineWithOldLine:function(oldLine) {
-        return oldLine;
+        // return oldLine;
         var selfRealRotation = this.getRealZRotation();
         var selfLine = zz.line(this.getPosition().x, this.getPosition().y, selfRealRotation);
         var intersectionPoint = zz.pointIntersectionFromLines(oldLine, selfLine);
-        if (!cc.rectContainsPoint(this.getRect(), intersectionPoint)) {
+        if (!this.isPointInside(intersectionPoint)) {
             return oldLine;
         }
 
         var reflectedZRotation = (selfRealRotation - oldLine.alpha) + selfRealRotation;
         return zz.line(intersectionPoint.x, intersectionPoint.y, reflectedZRotation);
     },
+    isPointInside:function(point) {
+        return cc.rectContainsPoint(this.getRect(), point);
+    }
 });
 
 var NormalReflector = BaseReflector.extend({
@@ -243,10 +332,15 @@ var NormalReflector = BaseReflector.extend({
         this.setRotation(rota);
     },
     getRealZRotation:function() {
-        return self.getRotation() - (M_PI / 4);
+        return this.getRotation() - (M_PI / 4);
     },
-    // isPointInDarkSide
-
+    isPointInDarkSide:function(point) {
+        return false;
+        var myPosition = this.getPosition();
+        var pointInMe = zz.pointOffset(point, -myPosition.x, -myPosition.y);
+        var rotatedPoint = zz.pointRotateVector(pointInMe, -this.getRotation());
+        return (rotatedPoint.x * -1) - 1 > rotatedPoint.y;
+    },
 });
 
 var ManualReflector = BaseReflector.extend({
@@ -262,7 +356,10 @@ var ManualReflector = BaseReflector.extend({
             rota = M_PI / 4;
         }
         this.setRotation(rota);
-    }
+    },
+    isPointInside:function(point) {
+        return (this.getRect().width / 2) >= zz.distanceFromPoints(this.getPosition(), point);
+    },
 });
 
 var AutoReflector = BaseReflector.extend({
@@ -284,22 +381,60 @@ var AutoReflector = BaseReflector.extend({
     setRotation:function(rotation) {
         this._super(rotation);
         this.backgroundSpr.setRotation(-rotation);
+    },
+    getNewLineWithOldLine(oldLine) {
+        var shootingOffset = OBJ_BLOCK_WIDTH * 0.4;
+        var zRota = this.getRotation();
+        var shootingVector = zz.pointRotateVector(cc.p(shootingOffset, 0), zRota);
+        var shootingPoint = zz.pointOffset(this.getPosition(), shootingVector.x, shootingVector.y);
+        return zz.line(shootingPoint.x, shootingPoint.y, zRota);
     }
 });
 
 var BasePacket = BaseSprite.extend({
+    _hits:0,
+    _dying:false,
+    getHurt:function() {
+        if (this._dying) {
+            return;
+        }
+        var shakeValue = 0.02;
+        var anchor = cc.p(0.5 + shakeValue * cc.randomMinus1To1(), 0.5 + shakeValue * cc.randomMinus1To1());
+        this.setAnchorPoint(anchor);
+        this._hits ++;
+        if (this._hits > 100) {
+            this._dying = true;
+            this.removeFromParent();
+            this.didFinishCrash();
+        }
+    },
+    getRect:function() {
+        if (this._dying) {
+            return cc.rect(0, 0, 0, 0);
+        }
+        var rect = this._super();
+        var shrink = rect.width * 0.15;
+        return zz.rectInset(rect, shrink, shrink);
+    },
+    didFinishCrash:function() {
 
+    }
 });
 
 var DataPacket = BasePacket.extend({
+    _typeName:"DataPacket",
     ctor:function() {
         this._super("Textures/DataPacket.png");
     }
 });
 
 var FirePacket = BasePacket.extend({
+    _typeName:"FirePacket",
     ctor:function() {
         this._super("Textures/FirePacket.png");
+    },
+    didFinishCrash:function() {
+        currentDiedTime ++;
     }
 });
 
@@ -337,6 +472,8 @@ var LazerSource = BaseSprite.extend({
         }
     }
 });
+
+var turningRed = false;
 
 var LazerParticle = cc.Node.extend({
     _className:"LazerParticle",
@@ -395,6 +532,9 @@ var LazerParticle = cc.Node.extend({
                         // baljblaklkf
                         testWillBeReflected = true;
                         var willNotHitNotReflectingFace = false; // check false face
+                        if (tSpr._reflectorType == "NormalReflector") {
+                            willNotHitNotReflectingFace = tSpr.isPointInDarkSide(testHitPoint);
+                        }
                         if (willNotHitNotReflectingFace) {
                             testWillBeReflected = false;
                         } else {
@@ -427,10 +567,22 @@ var LazerParticle = cc.Node.extend({
             if (isReflected) {
                 lastLine = reflectedLine;
             } else {
-                 // if packet
-                 ended = true;
-                 this.drawSparkAtPoint(thisHitPoint, lastLine);
-                 // turn red if need
+                // if packet
+                if (lastHitSpr) {
+                    lastHitSpr.getHurt();
+
+                }
+                ended = true;
+                this.drawSparkAtPoint(thisHitPoint, lastLine);
+                // turn red if need
+                turningRed = false;
+                if (lastHitSpr) {
+                    if (lastHitSpr.isClass("BaseSprite")) {
+                        if (lastHitSpr.isType("FirePacket")) {
+                            turningRed = true;
+                        }
+                    }
+                }
             }
         }
     },
@@ -446,23 +598,21 @@ var LazerParticle = cc.Node.extend({
         lazer.setPosition(center);
         lazer.setScaleX(distance / OBJ_BLOCK_WIDTH);
         lazer.setScaleY(0.4);
+        lazer.setColor(this.getTintColor());
         this.addChild(lazer);
     },
     drawSparkAtPoint:function(atPoint, fromLine) {
-
-    },
-    test:function() {
-        var pointer = new BaseSprite("Textures/LazerParticle.png");
-        pointer.setRotation(this._realZRotation);
-        pointer.setPosition(zz.pointRotateVector(cc.p(OBJ_BLOCK_WIDTH / 2, 0), this._realZRotation));
-        pointer.setScaleX(1);
-        pointer.setScaleY(0.4);
-        this.addChild(pointer);
-
         var pointer2 = new BaseSprite("Textures/LazerSpark.png");
-        pointer2.setRotation(this._realZRotation + cc.randomMinus1To1() * M_PI * 0.1);
-        pointer2.setPosition(zz.pointRotateVector(cc.p(64, 0), this._realZRotation));
+        pointer2.setRotation(fromLine.alpha + cc.randomMinus1To1() * M_PI * 0.1);
+        pointer2.setPosition(zz.pointOffset(atPoint, -this.getPosition().x, -this.getPosition().y));
         pointer2.setScaleY(cc.randomMinus1To1() > 0 ? 1 : -1);
+        pointer2.setColor(this.getTintColor());
         this.addChild(pointer2);
     },
+    getTintColor:function() {
+        if (turningRed) {
+            return cc.color(255, 0, 0, 255);
+        }
+        return cc.color(0, 255, 255, 255);
+    }
 });

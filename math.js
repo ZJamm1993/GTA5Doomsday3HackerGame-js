@@ -39,13 +39,13 @@ var zz = zz || {};
 
 // points 
 zz.pointNotFound = function() {
-    return cc.p(0, 0);
+    return cc.p(-1234567, -1234567);
 };
 
 zz.distanceFromPoints = function(p1, p2) {
     var dx = p1.x - p2.x;
-    var dy = p1.x - p2.x;
-    return sqrt(dx * dx + dy * dy);
+    var dy = p1.y - p2.y;
+    return sqrt((dx * dx) + (dy * dy));
 };
 
 zz.centerFromPoints = function(p1, p2) {
@@ -134,29 +134,30 @@ zz.pointIntersectionFromRectToLine = function(rect, line) {
             }
         }
     }
+    // return selectedPoint;
 
-    // if (!cc.pointEqualToPoint(selectedPoint, zz.pointNotFound())) {
-    //     var tolerance = 1.0;
-    //     var testDistance = rect.width * 0.5 * M_SQRT2 - tolerance;
-    //     var centerPoint = cc.p(cc.rectGetMinX(rect), cc.rectGetMinY(rect));
-    //     // y = kx + b;
-    //     var k = tan(line.alpha);
-    //     if (k > 1000000) {
-    //         if (abs(line.x - centerPoint.x) > testDistance) {
-    //             selectedPoint = zz.pointNotFound();
-    //         }
-    //     } else {
-    //         var b = line.y - k * line.x;
-    //         // Ax + By + C = 0;
-    //         var A = k;
-    //         var B = -1;
-    //         var C = b;
-    //         var dis = abs(A * centerPoint.x + B * centerPoint.y + C) / sqrt(A * A + B * B);
-    //         if (dis > testDistance) {
-    //             selectedPoint = zz.pointNotFound();
-    //         }
-    //     }
-    // }
+    if (!cc.pointEqualToPoint(selectedPoint, zz.pointNotFound())) {
+        var tolerance = 1.0;
+        var testDistance = rect.width * 0.5 * M_SQRT2 - tolerance;
+        var centerPoint = cc.p(cc.rectGetMidX(rect), cc.rectGetMidY(rect));
+        // y = kx + b;
+        var k = tan(line.alpha);
+        if (k > 1000000) {
+            if (abs(line.x - centerPoint.x) > testDistance) {
+                selectedPoint = zz.pointNotFound();
+            }
+        } else {
+            var b = line.y - k * line.x;
+            // Ax + By + C = 0;
+            var A = k;
+            var B = -1;
+            var C = b;
+            var dis = abs(A * centerPoint.x + B * centerPoint.y + C) / sqrt(A * A + B * B);
+            if (dis > testDistance) {
+                selectedPoint = zz.pointNotFound();
+            }
+        }
+    }
 
     return selectedPoint;
 };
