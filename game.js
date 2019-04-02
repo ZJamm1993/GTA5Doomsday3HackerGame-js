@@ -30,6 +30,11 @@ window.onkeydown=function(){
 
 window.onload = function(){
     cc.game.onStart = function(){
+
+        // cc.view.setDesignResolutionSize(1024, 576, cc.ResolutionPolicy.EXACT_FIT);
+        // cc.view.setResizeCallback(function() {
+        //     cc.view.setDesignResolutionSize(1024, 576, cc.ResolutionPolicy.EXACT_FIT);
+        // });
         //load resources
         cc.LoaderScene.preload([], function () {
             var MyScene = cc.Scene.extend({
@@ -46,6 +51,7 @@ window.onload = function(){
         }, this);
     };
     cc.game.run("gameCanvas");
+
 };
 
 var isGameOver = false;
@@ -55,17 +61,22 @@ var GameLayer = cc.LayerColor.extend({
     _currentReflectorIndicator:null,
     onEnter:function() {
         this._super();
-        var myLayer = this;
-        var listener = cc.EventListener.create({
-            event:cc.EventListener.TOUCH_ONE_BY_ONE,
-            onTouchBegan:myLayer.onTouchBegan,
-        });
-        cc.eventManager.addListener(listener, myLayer);
+        this.addTouchAction();
     },
-    onTouchBegan:function(touch, event) {
-        var myLayer = event.getCurrentTarget();
-        var point = touch.getLocation();
-        var children = myLayer.getChildren();
+    addTouchAction:function() {
+        var myLayer = this;
+        cc.eventManager.addListener(cc.EventListener.create({
+            event:cc.EventListener.TOUCH_ONE_BY_ONE,
+            onTouchBegan:function(event) {
+                console.log("onMouseDown");
+                var point = event.getLocation();
+                myLayer.didTouchOnPoint(point);
+                return true;
+            },
+        }), myLayer);
+    },
+    didTouchOnPoint:function(point) {
+        var children = this.getChildren();
         var testObjs = new Array();
         var particles = new Array();
         for (let index in children) {
@@ -74,8 +85,8 @@ var GameLayer = cc.LayerColor.extend({
                 if (child._reflectorType == "ManualReflector") {
                     var rect = child.getRect();
                     if (cc.rectContainsPoint(rect, point)) {
-                        myLayer.setCurrentManualReflector(child);
-                        break;
+                        this.setCurrentManualReflector(child);
+                        return;
                     }
                 }
             }
